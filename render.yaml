@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: diario-virtual
+    runtime: python
+    plan: free
+    buildCommand: "true"
+    startCommand: python servidor.py

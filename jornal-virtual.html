@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>O Diário Virtual</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,700;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<style>
+:root{
+  --paper:#eee;
+  --ink:#232323;
+  --ink-soft:#555;
+  --rule:#3a3a3a;
+  --hair:#b9b9b9;
+  --hl:#dcdcdc;
+}
+*{box-sizing:border-box}
+html{background:var(--paper)}
+body{
+  margin:0;background:var(--paper);color:var(--ink);
+  font-family:"IBM Plex Sans","Helvetica Neue",Arial,sans-serif;line-height:1.5;
+}
+.sheet{max-width:1180px;margin:0 auto;padding:28px 28px 60px}
+
+/* Cabeçalho */
+.topline{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;
+  font-size:.78rem;color:var(--ink-soft);border-bottom:1px solid var(--rule);padding-bottom:8px}
+.masthead{text-align:center;padding:14px 0 6px}
+.masthead h1{
+  font-weight:700;margin:0;
+  font-size:clamp(2.2rem,8vw,4.8rem);line-height:1.05;letter-spacing:-.03em
+}
+.rule-double{border-top:3px solid var(--rule);border-bottom:1px solid var(--rule);height:7px;margin:8px 0}
+.bar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;
+  padding:6px 0;font-size:.82rem}
+.bar .status i{margin-right:6px}
+.btn{
+  font:inherit;font-size:.8rem;background:transparent;color:var(--ink);
+  border:1px solid var(--rule);padding:6px 12px;cursor:pointer;display:inline-flex;gap:8px;align-items:center
+}
+.btn:hover{background:var(--ink);color:var(--paper)}
+.btn:focus-visible,input:focus-visible,.chip button:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.btns{display:flex;gap:8px}
+.spin i{animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Painel de configuração */
+.config{display:none;border:1px solid var(--rule);padding:18px;margin:12px 0 4px;background:#e6e6e6}
+.config.open{display:grid;grid-template-columns:1fr 1fr;gap:26px}
+.config h3{margin:0 0 4px;font-size:1.05rem}
+.config p{margin:0 0 10px;font-size:.78rem;color:var(--ink-soft)}
+.addrow{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
+.addrow input{font:inherit;font-size:.82rem;padding:6px 8px;border:1px solid var(--rule);background:var(--paper);color:var(--ink);flex:1;min-width:120px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{display:inline-flex;align-items:center;border:1px solid var(--rule);font-size:.8rem;background:var(--paper)}
+.chip span{padding:4px 8px;cursor:default}
+.chip.off{opacity:.5;text-decoration:line-through}
+.chip .tg{cursor:pointer}
+.chip button{font:inherit;border:0;border-left:1px solid var(--rule);background:transparent;padding:4px 7px;cursor:pointer;color:var(--ink)}
+.chip button:hover{background:var(--ink);color:var(--paper)}
+.keyrow input{flex:2}
+.keyinfo{font-size:.78rem;color:var(--ink-soft);margin-top:2px}
+.config .wide{grid-column:1/-1;border-top:1px solid var(--hair);padding-top:14px}
+.config .foot{grid-column:1/-1;font-size:.78rem;color:var(--ink-soft);border-top:1px solid var(--hair);padding-top:10px}
+
+/* Seções */
+.section{margin-top:28px}
+.section-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;
+  border-top:3px solid var(--rule);border-bottom:1px solid var(--rule);padding:6px 0 5px}
+.section-head h2{font-weight:700;font-size:1.4rem;letter-spacing:-.01em;margin:0}
+.section-head small{color:var(--ink-soft);font-size:.74rem}
+.grid{display:grid;grid-template-columns:1.6fr 1fr;gap:0;margin-top:14px}
+.lead{padding-right:24px;border-right:1px solid var(--rule)}
+.lead h3{font-weight:700;font-size:clamp(1.5rem,3.2vw,2.3rem);line-height:1.15;letter-spacing:-.02em;margin:0 0 10px}
+.lead h3 a{color:inherit;text-decoration:none}
+.lead h3 a:hover{text-decoration:underline}
+.lead .dropcap{font-size:.95rem;color:var(--ink-soft);margin:0 0 10px}
+.byline{font-size:.74rem;color:var(--ink-soft);font-style:italic}
+.byline b{font-style:normal;color:var(--ink)}
+.rest{padding-left:24px;columns:1}
+.item{padding:0 0 12px;margin:0 0 12px;border-bottom:1px solid var(--hair)}
+.item:last-child{border-bottom:0;margin-bottom:0}
+.item h4{font-weight:700;font-size:1rem;line-height:1.3;margin:0 0 4px}
+.item h4 a{color:inherit;text-decoration:none}
+.item h4 a:hover{text-decoration:underline}
+.more{columns:3;column-gap:28px;column-rule:1px solid var(--hair);margin-top:16px;padding-top:14px;border-top:1px solid var(--hair)}
+.more .item{break-inside:avoid}
+
+.empty,.errbox{border:1px dashed var(--rule);padding:18px;margin-top:14px;font-size:.88rem;color:var(--ink-soft)}
+.errbox{color:var(--ink)}
+.skeleton{height:14px;background:var(--hl);margin:10px 0;animation:pulse 1.4s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.45}}
+img{max-width:100%}
+.fig:empty,.thumb:empty{display:none}
+.fig{margin:0 0 12px}
+.fig img,.thumb img,.rd-fig img{display:block;width:100%;object-fit:cover;filter:grayscale(1) contrast(1.05);border:1px solid var(--rule)}
+.fig img{aspect-ratio:16/9}
+.fig:hover img,.thumb:hover img,.rd-fig:hover img{filter:none}
+.rest .item{display:grid;grid-template-columns:1fr;gap:12px;align-items:start}
+.rest .item.hasimg{grid-template-columns:1fr 104px}
+.thumb img{aspect-ratio:4/3}
+.reader{position:fixed;inset:0;background:var(--paper);overflow:auto;z-index:50}
+.reader[hidden]{display:none}
+.reader-bar{position:sticky;top:0;background:var(--paper);border-bottom:3px solid var(--rule);z-index:2}
+.reader-bar .in{max-width:760px;margin:0 auto;padding:10px 24px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.reader-sheet{max-width:760px;margin:0 auto;padding:22px 24px 70px}
+.reader-sheet a.btn{text-decoration:none}
+.rd-kicker{font-size:.78rem;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px}
+.reader h1{font-weight:700;font-size:clamp(1.7rem,4vw,2.5rem);line-height:1.15;letter-spacing:-.02em;margin:0 0 14px}
+.rd-dek{font-size:1.08rem;color:var(--ink-soft);margin:0 0 16px;border-left:3px solid var(--rule);padding-left:12px}
+.rd-fig{margin:0 0 20px}
+.rd-fig img{aspect-ratio:16/9}
+.rd-text p{font-size:1.02rem;line-height:1.75;margin:0 0 1em}
+.rd-foot{border-top:1px solid var(--rule);margin-top:26px;padding-top:10px;font-size:.78rem;color:var(--ink-soft)}
+footer{margin-top:40px;border-top:3px solid var(--rule);padding-top:8px;font-size:.74rem;color:var(--ink-soft);text-align:center}
+
+@media(max-width:860px){
+  .grid{grid-template-columns:1fr}
+  .lead{padding-right:0;border-right:0;border-bottom:1px solid var(--rule);padding-bottom:14px;margin-bottom:14px}
+  .rest{padding-left:0}
+  .more{columns:2}
+  .config.open{grid-template-columns:1fr}
+}
+@media(max-width:560px){.more{columns:1}.sheet{padding:16px}}
+@media(prefers-reduced-motion:reduce){.spin i,.skeleton{animation:none}}
+</style>
+</head>
+<body>
+<div class="sheet">
+  <div class="topline">
+    <span id="dateLine"></span>
+    <span id="editionLine"></span>
+  </div>
+
+  <header class="masthead"><h1>O Diário Virtual</h1></header>
+  <div class="rule-double"></div>
+
+  <div class="bar">
+    <div class="status" id="status"><i class="fa-regular fa-clock"></i>Carregando edição...</div>
+    <div class="btns">
+      <button class="btn" id="btnRefresh" type="button"><i class="fa-solid fa-rotate"></i>Atualizar agora</button>
+      <button class="btn" id="btnConfig" type="button" aria-expanded="false"><i class="fa-solid fa-sliders"></i>Tópicos e veículos</button>
+    </div>
+  </div>
+
+  <div class="errbox" id="fileWarn" hidden><i class="fa-solid fa-triangle-exclamation"></i> Você abriu este arquivo direto do disco, e o navegador bloqueia as buscas de notícias nesse modo. Rode <b>servidor.py</b> e acesse <b>http://localhost:8000</b>.</div>
+
+  <section class="config" id="config" aria-label="Configurações">
+    <div>
+      <h3><i class="fa-solid fa-newspaper"></i> Tópicos</h3>
+      <p>Cada tópico vira uma seção do jornal.</p>
+      <div class="addrow">
+        <input id="topicInput" type="text" placeholder="Ex.: economia, inteligência artificial" aria-label="Novo tópico">
+        <button class="btn" id="addTopic" type="button"><i class="fa-solid fa-plus"></i>Adicionar</button>
+      </div>
+      <div class="chips" id="topicChips"></div>
+    </div>
+    <div>
+      <h3><i class="fa-solid fa-building-columns"></i> Veículos</h3>
+      <p>Clique no nome para ativar ou desativar. Sem nenhum ativo, a busca usa todas as fontes.</p>
+      <div class="addrow">
+        <input id="outName" type="text" placeholder="Nome (ex.: Valor)" aria-label="Nome do veículo">
+        <input id="outDomain" type="text" placeholder="Domínio (ex.: valor.globo.com)" aria-label="Domínio do veículo">
+        <button class="btn" id="addOutlet" type="button"><i class="fa-solid fa-plus"></i>Adicionar</button>
+      </div>
+      <div class="chips" id="outletChips"></div>
+    </div>
+    <div class="wide">
+      <h3><i class="fa-solid fa-key"></i> Chave da Currents API</h3>
+      <p>Opcional. Com a chave, a busca usa a Currents API primeiro e recorre ao Google Notícias se ela falhar ou a cota acabar. A chave fica salva apenas neste navegador.</p>
+      <div class="addrow keyrow">
+        <input id="keyInput" type="password" autocomplete="off" placeholder="Cole sua chave aqui" aria-label="Chave da Currents API">
+        <button class="btn" id="saveKey" type="button"><i class="fa-solid fa-floppy-disk"></i>Salvar chave</button>
+        <button class="btn" id="clearKey" type="button"><i class="fa-solid fa-trash"></i>Remover</button>
+      </div>
+      <div class="keyinfo" id="keyInfo"></div>
+    </div>
+    <div class="foot"><i class="fa-solid fa-circle-info"></i> As preferências ficam salvas neste navegador. A edição é renovada automaticamente a cada 10 minutos.</div>
+  </section>
+
+  <main id="paper"></main>
+
+  <div class="reader" id="reader" hidden role="dialog" aria-modal="true" aria-label="Leitura da matéria">
+    <div class="reader-bar"><div class="in">
+      <button class="btn" id="rdBack" type="button"><i class="fa-solid fa-arrow-left"></i>Voltar ao jornal</button>
+      <a class="btn" id="rdOrig" href="#" target="_blank" rel="noopener"><i class="fa-solid fa-arrow-up-right-from-square"></i>Ler no site original</a>
+    </div></div>
+    <div class="reader-sheet" id="rdBody"></div>
+  </div>
+
+  <footer>Notícias reunidas por <a href="https://currentsapi.services" target="_blank" rel="noopener">Currents API</a> e Google Notícias a partir dos veículos selecionados. Os textos pertencem aos seus respectivos autores.</footer>
+</div>
+
+<script>
+(function(){
+  const REFRESH_MS = 10 * 60 * 1000;
+  const KEY = 'diario-virtual-v1';
+  const PROXIES = [
+    u => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u),
+    u => 'https://corsproxy.io/?url=' + encodeURIComponent(u),
+    u => 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(u)
+  ];
+
+  const defaults = {
+    apiKey: '',
+    topics: ['Brasil', 'Economia', 'Tecnologia'],
+    outlets: [
+      {name:'G1', domain:'g1.globo.com', on:true},
+      {name:'Folha de S.Paulo', domain:'folha.uol.com.br', on:true},
+      {name:'O Estado de S. Paulo', domain:'estadao.com.br', on:true},
+      {name:'CNN Brasil', domain:'cnnbrasil.com.br', on:true},
+      {name:'BBC News Brasil', domain:'bbc.com', on:false},
+      {name:'UOL', domain:'noticias.uol.com.br', on:false}
+    ]
+  };
+
+  let state = load();
+  let nextAt = Date.now() + REFRESH_MS;
+  let busy = false;
+  let useServer = false;
+  let lastCurErr = '';
+  let edition = 0;
+
+  const $ = id => document.getElementById(id);
+
+  function load(){
+    try{
+      const s = JSON.parse(localStorage.getItem(KEY));
+      if(s && Array.isArray(s.topics) && Array.isArray(s.outlets)){ s.apiKey = s.apiKey || ''; return s; }
+    }catch(e){}
+    return JSON.parse(JSON.stringify(defaults));
+  }
+  function save(){
+    try{ localStorage.setItem(KEY, JSON.stringify(state)); }catch(e){}
+  }
+
+  /* ---------- Cabeçalho ---------- */
+  function setDate(){
+    const d = new Date();
+    $('dateLine').textContent = d.toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+  }
+
+  /* ---------- Configuração ---------- */
+  function renderConfig(){
+    const tc = $('topicChips'); tc.innerHTML = '';
+    state.topics.forEach((t,i)=>{
+      const c = document.createElement('div'); c.className='chip';
+      const s = document.createElement('span'); s.textContent = t;
+      const b = document.createElement('button'); b.type='button';
+      b.setAttribute('aria-label','Remover '+t);
+      b.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+      b.onclick = ()=>{ state.topics.splice(i,1); save(); renderConfig(); fetchAll(); };
+      c.append(s,b); tc.appendChild(c);
+    });
+    const oc = $('outletChips'); oc.innerHTML = '';
+    state.outlets.forEach((o,i)=>{
+      const c = document.createElement('div'); c.className='chip'+(o.on?'':' off');
+      const s = document.createElement('span'); s.className='tg'; s.textContent=o.name; s.title=o.domain;
+      s.onclick = ()=>{ o.on=!o.on; save(); renderConfig(); fetchAll(); };
+      const b = document.createElement('button'); b.type='button';
+      b.setAttribute('aria-label','Remover '+o.name);
+      b.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+      b.onclick = ()=>{ state.outlets.splice(i,1); save(); renderConfig(); fetchAll(); };
+      c.append(s,b); oc.appendChild(c);
+    });
+  }
+
+  function addTopic(){
+    const v = $('topicInput').value.trim();
+    if(!v) return;
+    if(!state.topics.some(t=>t.toLowerCase()===v.toLowerCase())) state.topics.push(v);
+    $('topicInput').value=''; save(); renderConfig(); fetchAll();
+  }
+  function addOutlet(){
+    const name = $('outName').value.trim();
+    let dom = $('outDomain').value.trim().toLowerCase().replace(/^https?:\/\//,'').replace(/^www\./,'').replace(/\/.*$/,'');
+    if(!name || !dom) return;
+    state.outlets.push({name, domain:dom, on:true});
+    $('outName').value=''; $('outDomain').value='';
+    save(); renderConfig(); fetchAll();
+  }
+
+  /* ---------- Busca ---------- */
+  function buildUrl(topic){
+    const active = state.outlets.filter(o=>o.on);
+    let q = topic;
+    if(active.length){
+      q += ' (' + active.map(o=>'site:'+o.domain).join(' OR ') + ')';
+    }
+    q += ' when:2d';
+    return 'https://news.google.com/rss/search?q=' + encodeURIComponent(q) + '&hl=pt-BR&gl=BR&ceid=BR:pt-419';
+  }
+
+  async function detectServer(){
+    if(location.protocol === 'file:') return;
+    try{
+      const r = await fetch('/api/ping');
+      useServer = r.ok && (await r.json()).ok === true;
+    }catch(e){}
+  }
+  async function fetchText(url){
+    if(useServer){
+      const r = await fetch('/api/rss?url=' + encodeURIComponent(url));
+      if(!r.ok) throw new Error('servidor local HTTP '+r.status);
+      return await r.text();
+    }
+    const errs = [];
+    for(const p of PROXIES){
+      try{
+        const ctl = new AbortController();
+        const to = setTimeout(()=>ctl.abort(), 15000);
+        const r = await fetch(p(url), {signal:ctl.signal});
+        clearTimeout(to);
+        if(!r.ok) throw new Error('HTTP '+r.status);
+        const t = await r.text();
+        if(t.indexOf('<rss') === -1 && t.indexOf('<item') === -1) throw new Error('Resposta inválida');
+        return t;
+      }catch(e){ errs.push(e.name==='AbortError' ? 'tempo esgotado' : e.message); }
+    }
+    throw new Error('proxies: '+errs.join(', '));
+  }
+
+  function parse(xml){
+    const doc = new DOMParser().parseFromString(xml,'text/xml');
+    const items = [...doc.querySelectorAll('item')].map(it=>{
+      const raw = (it.querySelector('title')||{}).textContent || '';
+      const srcEl = it.querySelector('source');
+      const source = srcEl ? srcEl.textContent : '';
+      let title = raw;
+      if(source && title.endsWith(' - '+source)) title = title.slice(0, -(source.length+3));
+      return {
+        title: title.trim(),
+        link: (it.querySelector('link')||{}).textContent || '#',
+        date: new Date((it.querySelector('pubDate')||{}).textContent || Date.now()),
+        source: source || 'Fonte desconhecida'
+      };
+    });
+    items.sort((a,b)=>b.date-a.date);
+    return items;
+  }
+
+  function ago(d){
+    const m = Math.max(0, Math.round((Date.now()-d)/60000));
+    if(m<1) return 'agora mesmo';
+    if(m<60) return 'há '+m+' min';
+    const h = Math.round(m/60);
+    if(h<24) return 'há '+h+' h';
+    return 'há '+Math.round(h/24)+' d';
+  }
+
+  /* ---------- Currents API ---------- */
+  function today(){ return new Date().toISOString().slice(0,10); }
+  function countUse(){
+    if(!state.usage || state.usage.day !== today()) state.usage = {day:today(), n:0};
+    state.usage.n++; save();
+  }
+  function host(u){ try{ return new URL(u).hostname.replace(/^www\./,''); }catch(e){ return ''; } }
+  function parseCurrentsDate(v){
+    const d = new Date(String(v).replace(' ','T').replace(/ ([+-]\d{2})(\d{2})$/,'$1:$2'));
+    return isNaN(d) ? new Date() : d;
+  }
+  function sourceName(h){
+    const o = state.outlets.find(o=>h.endsWith(o.domain));
+    return o ? o.name : h;
+  }
+  async function fetchCurrents(topic){
+    const url = 'https://api.currentsapi.services/v1/search?keywords=' + encodeURIComponent(topic) +
+      '&language=pt&apiKey=' + encodeURIComponent(state.apiKey);
+    countUse(); updateKeyInfo();
+    const tries = useServer ? [null] : [u=>u];
+    let last;
+    for(const p of tries){
+      try{
+        const r = useServer
+          ? await fetch('/api/currents?keywords=' + encodeURIComponent(topic), {headers:{'X-Api-Key': state.apiKey}})
+          : await fetch(p(url));
+        if(r.status === 429) throw new Error('quota');
+        if(!r.ok){
+          let m = ''; try{ m = (await r.json()).msg || ''; }catch(x){}
+          throw new Error('Currents HTTP '+r.status+(m ? ': '+m : ''));
+        }
+        const j = await r.json();
+        if(j.status !== 'ok') throw new Error(j.msg || 'erro');
+        lastCurErr = '';
+        let items = (j.news||[]).map(n=>({
+          title: (n.title||'').trim(),
+          link: n.url || '#',
+          date: parseCurrentsDate(n.published),
+          source: sourceName(host(n.url||'')),
+          image: (n.image && n.image !== 'None') ? n.image : ''
+        })).filter(a=>a.title);
+        const act = state.outlets.filter(o=>o.on);
+        if(act.length) items = items.filter(a=>act.some(o=>host(a.link).endsWith(o.domain)));
+        const seen = new Set();
+        items = items.filter(a=>{ const k=a.title.toLowerCase(); if(seen.has(k)) return false; seen.add(k); return true; });
+        items.sort((a,b)=>b.date-a.date);
+        return items;
+      }catch(e){ last = e; lastCurErr = e.message === 'quota' ? 'cota diária esgotada' : e.message; if(e.message === 'quota') break; }
+    }
+    throw last;
+  }
+  async function fetchRss2Json(url){
+    const r = await fetch('https://api.rss2json.com/v1/api.json?rss_url=' + encodeURIComponent(url));
+    if(!r.ok) throw new Error('rss2json HTTP '+r.status);
+    const j = await r.json();
+    if(j.status !== 'ok') throw new Error('rss2json: '+(j.message||'erro'));
+    const items = (j.items||[]).map(n=>{
+      let title = (n.title||'').trim(), source = '';
+      const i = title.lastIndexOf(' - ');
+      if(i > 0){ source = title.slice(i+3); title = title.slice(0,i); }
+      return {title, link:n.link||'#', date:new Date(String(n.pubDate).replace(' ','T')+'Z'), source: source||'Google Notícias'};
+    });
+    items.sort((a,b)=>b.date-a.date);
+    return items;
+  }
+  async function getTopic(t){
+    if(state.apiKey){
+      try{
+        const it = await fetchCurrents(t);
+        if(it.length) return {items: it, via: 'Currents API'};
+      }catch(e){}
+    }
+    const url = buildUrl(t);
+    try{
+      return {items: parse(await fetchText(url)), via: 'Google Notícias'};
+    }catch(e1){
+      try{
+        return {items: await fetchRss2Json(url), via: 'Google Notícias'};
+      }catch(e2){
+        throw new Error(e1.message + ' | ' + e2.message);
+      }
+    }
+  }
+  function updateKeyInfo(){
+    const n = (state.usage && state.usage.day === today()) ? state.usage.n : 0;
+    $('keyInfo').textContent = state.apiKey
+      ? 'Chave salva. Requisições à Currents API hoje: '+n+' (uma por tópico a cada atualização).'
+      : 'Nenhuma chave salva. A busca usa o Google Notícias.';
+    if(state.apiKey && lastCurErr) $('keyInfo').textContent += ' Último erro: '+lastCurErr+'.';
+  }
+
+  /* ---------- Render ---------- */
+  function esc(s){ const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+
+  function byline(a){
+    return '<div class="byline"><b>'+esc(a.source)+'</b> &mdash; '+ago(a.date)+'</div>';
+  }
+
+  const itemsByLink = new Map();
+  const metaCache = new Map();
+  function aTag(a){
+    return '<a href="'+esc(a.link)+'" data-read="'+esc(a.link)+'" target="_blank" rel="noopener">'+esc(a.title)+'</a>';
+  }
+
+  function sectionHTML(topic, res){
+    let h = '<section class="section"><div class="section-head"><h2>'+esc(topic)+'</h2><small>'+
+      (res.items ? Math.min(res.items.length,15)+' matérias' : '')+'</small></div>';
+    if(res.error){
+      h += '<div class="errbox"><i class="fa-solid fa-triangle-exclamation"></i> Não foi possível buscar este tópico agora. Uma nova tentativa ocorre na próxima atualização.'+(location.protocol==='file:' ? '<br>O navegador bloqueia buscas feitas por arquivos abertos direto do disco. Rode <b>servidor.py</b> e abra http://localhost:8000.' : '')+'<br><small>Detalhe técnico: '+esc(res.msg||'sem detalhe')+'</small></div>';
+    }else if(!res.items.length){
+      h += '<div class="empty"><i class="fa-regular fa-face-frown"></i> Nenhuma matéria encontrada nas últimas 48 horas para os veículos ativos. Ative mais veículos ou ajuste o tópico.</div>';
+    }else{
+      const items = res.items.slice(0,15);
+      items.forEach(a=>itemsByLink.set(a.link, a));
+      const lead = items[0];
+      const side = items.slice(1,5);
+      const more = items.slice(5);
+      h += '<div class="grid"><article class="lead"><div class="fig" data-img="'+esc(lead.link)+'"></div><h3>'+aTag(lead)+'</h3>'+
+        byline(lead)+'</article><div class="rest">'+
+        side.map(a=>'<article class="item"><div class="txt"><h4>'+aTag(a)+'</h4>'+byline(a)+'</div><div class="thumb" data-img="'+esc(a.link)+'"></div></article>').join('')+
+        '</div></div>';
+      if(more.length){
+        h += '<div class="more">'+more.map(a=>'<article class="item"><h4>'+aTag(a)+'</h4>'+byline(a)+'</article>').join('')+'</div>';
+      }
+    }
+    return h + '</section>';
+  }
+
+  /* ---------- Imagens e leitor ---------- */
+  function getMeta(it, force){
+    if(!force && metaCache.has(it.link)) return metaCache.get(it.link);
+    const p = fetch('/api/article?url=' + encodeURIComponent(it.link)).then(async r=>{
+      const j = await r.json().catch(()=>({}));
+      if(!r.ok) throw new Error(j.error || ('HTTP '+r.status));
+      return j;
+    });
+    metaCache.set(it.link, p);
+    return p;
+  }
+
+  async function hydrateImages(){
+    const nodes = [...document.querySelectorAll('[data-img]')].filter(n=>!n.firstChild);
+    let i = 0;
+    async function worker(){
+      while(i < nodes.length){
+        const n = nodes[i++];
+        const it = itemsByLink.get(n.dataset.img);
+        if(!it) continue;
+        let src = it.image;
+        if(!src && useServer){ try{ src = (await getMeta(it)).image; }catch(e){} }
+        if(!src || !n.isConnected) continue;
+        const img = new Image();
+        img.alt = ''; img.referrerPolicy = 'no-referrer';
+        img.onload = ()=>{
+          if(!n.isConnected) return;
+          n.appendChild(img);
+          const art = n.closest('.item'); if(art) art.classList.add('hasimg');
+        };
+        img.src = src;
+      }
+    }
+    await Promise.all([worker(), worker(), worker()]);
+  }
+
+  function renderReader(it, m){
+    const paras = m.paragraphs || [];
+    let h = '<div class="rd-kicker">'+esc(it.source)+' &mdash; '+ago(it.date)+'</div><h1>'+esc(it.title)+'</h1>';
+    if(m.description) h += '<p class="rd-dek">'+esc(m.description)+'</p>';
+    if(m.image) h += '<figure class="rd-fig"><img src="'+esc(m.image)+'" alt="" referrerpolicy="no-referrer"></figure>';
+    h += paras.length
+      ? '<div class="rd-text">'+paras.map(p=>'<p>'+esc(p)+'</p>').join('')+'</div>'
+      : '<div class="empty">Não foi possível extrair o texto desta matéria. Use o botão "Ler no site original".</div>';
+    h += '<div class="rd-foot">Texto extraído automaticamente de '+esc(m.site || host(m.url||it.link))+'. Pode estar incompleto em sites com assinatura. Todos os direitos pertencem ao veículo.</div>';
+    return h;
+  }
+
+  async function openReader(it){
+    const rd = $('reader'), body = $('rdBody');
+    rd.hidden = false; rd.scrollTop = 0;
+    document.body.style.overflow = 'hidden';
+    $('rdOrig').href = it.link;
+    const head = '<div class="rd-kicker">'+esc(it.source)+' &mdash; '+ago(it.date)+'</div><h1>'+esc(it.title)+'</h1>';
+    body.innerHTML = head + '<div class="skeleton" style="width:90%"></div><div class="skeleton" style="width:80%"></div><div class="skeleton" style="width:85%"></div>';
+    try{
+      let m;
+      try{ m = await getMeta(it); }catch(e){ m = await getMeta(it, true); }
+      if(m.url) $('rdOrig').href = m.url;
+      if(rd.hidden) return;
+      body.innerHTML = renderReader(it, m);
+    }catch(e){
+      body.innerHTML = head + '<div class="errbox"><i class="fa-solid fa-triangle-exclamation"></i> Não foi possível abrir a matéria aqui ('+esc(e.message)+'). Use o botão "Ler no site original".</div>';
+    }
+  }
+  function closeReader(){
+    $('reader').hidden = true;
+    document.body.style.overflow = '';
+  }
+
+  function skeleton(){
+    return state.topics.map(t=>'<section class="section"><div class="section-head"><h2>'+esc(t)+'</h2></div>'+
+      '<div class="skeleton" style="width:70%"></div><div class="skeleton" style="width:90%"></div><div class="skeleton" style="width:55%"></div></section>').join('');
+  }
+
+  async function fetchAll(){
+    if(busy) return;
+    busy = true;
+    $('btnRefresh').classList.add('spin');
+    const paper = $('paper');
+    if(!state.topics.length){
+      paper.innerHTML = '<div class="empty" style="margin-top:20px"><i class="fa-solid fa-plus"></i> Adicione ao menos um tópico em "Tópicos e veículos" para montar sua edição.</div>';
+      busy = false; $('btnRefresh').classList.remove('spin'); nextAt = Date.now()+REFRESH_MS; return;
+    }
+    if(!paper.children.length || paper.querySelector('.skeleton')===null && edition===0) paper.innerHTML = skeleton();
+
+    const results = await Promise.all(state.topics.map(async t=>{
+      try{ return await getTopic(t); }
+      catch(e){ return {error:true, msg:e.message}; }
+    }));
+    const vias = [...new Set(results.filter(r=>r.via).map(r=>r.via))];
+
+    paper.innerHTML = state.topics.map((t,i)=>sectionHTML(t, results[i])).join('');
+    hydrateImages();
+    edition++;
+    $('editionLine').textContent = 'Edição n.º '+edition+(vias.length ? ', via '+vias.join(' e ') : '');
+    setDate();
+    nextAt = Date.now() + REFRESH_MS;
+    busy = false;
+    $('btnRefresh').classList.remove('spin');
+    tick();
+    updateKeyInfo();
+  }
+
+  function tick(){
+    const left = Math.max(0, nextAt - Date.now());
+    const m = Math.floor(left/60000), s = Math.floor((left%60000)/1000);
+    const upd = new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+    $('status').innerHTML = '<i class="fa-regular fa-clock"></i>' +
+      (busy ? 'Buscando notícias...' : 'Próxima atualização em '+m+':'+String(s).padStart(2,'0'));
+  }
+
+  /* ---------- Eventos ---------- */
+  $('btnRefresh').onclick = ()=>{ fetchAll(); };
+  $('btnConfig').onclick = ()=>{
+    const c = $('config'); const open = c.classList.toggle('open');
+    $('btnConfig').setAttribute('aria-expanded', open);
+  };
+  $('paper').addEventListener('click', e=>{
+    const a = e.target.closest('a[data-read]');
+    if(!a || !useServer) return;
+    if(e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+    const it = itemsByLink.get(a.dataset.read);
+    if(!it) return;
+    e.preventDefault();
+    openReader(it);
+  });
+  $('rdBack').onclick = closeReader;
+  document.addEventListener('keydown', e=>{ if(e.key === 'Escape' && !$('reader').hidden) closeReader(); });
+  $('saveKey').onclick = ()=>{
+    const v = $('keyInput').value.trim();
+    if(!v) return;
+    state.apiKey = v; $('keyInput').value=''; save(); updateKeyInfo(); fetchAll();
+  };
+  $('clearKey').onclick = ()=>{ state.apiKey=''; save(); updateKeyInfo(); fetchAll(); };
+  $('addTopic').onclick = addTopic;
+  $('addOutlet').onclick = addOutlet;
+  $('topicInput').addEventListener('keydown', e=>{ if(e.key==='Enter') addTopic(); });
+  $('outDomain').addEventListener('keydown', e=>{ if(e.key==='Enter') addOutlet(); });
+
+  setInterval(()=>{
+    if(Date.now() >= nextAt) fetchAll(); else tick();
+  }, 1000);
+
+  if(location.protocol === 'file:') $('fileWarn').hidden = false;
+  setDate();
+  renderConfig();
+  updateKeyInfo();
+  $('paper').innerHTML = skeleton();
+  detectServer().then(fetchAll);
+})();
+</script>
+</body>
+</html>
