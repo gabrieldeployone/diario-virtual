@@ -62,6 +62,8 @@ body{
 .chip button{font:inherit;border:0;border-left:1px solid var(--rule);background:transparent;padding:4px 7px;cursor:pointer;color:var(--ink)}
 .chip button:hover{background:var(--ink);color:var(--paper)}
 .keyrow input{flex:2}
+.keyrow label{flex:0 0 110px;align-self:center;font-size:.82rem;font-weight:bold}
+.keyrow .keyinfo{flex:1 1 100%;margin:0}
 .keyinfo{font-size:.78rem;color:var(--ink-soft);margin-top:2px}
 .config .wide{grid-column:1/-1;border-top:1px solid var(--hair);padding-top:14px}
 .config .foot{grid-column:1/-1;font-size:.78rem;color:var(--ink-soft);border-top:1px solid var(--hair);padding-top:10px}
@@ -169,14 +171,9 @@ footer{margin-top:40px;border-top:3px solid var(--rule);padding-top:8px;font-siz
       <div class="chips" id="outletChips"></div>
     </div>
     <div class="wide">
-      <h3><i class="fa-solid fa-key"></i> Chave da Currents API</h3>
-      <p>Opcional. Com a chave, a busca usa a Currents API primeiro e recorre ao Google Notícias se ela falhar ou a cota acabar. A chave fica salva apenas neste navegador.</p>
-      <div class="addrow keyrow">
-        <input id="keyInput" type="password" autocomplete="off" placeholder="Cole sua chave aqui" aria-label="Chave da Currents API">
-        <button class="btn" id="saveKey" type="button"><i class="fa-solid fa-floppy-disk"></i>Salvar chave</button>
-        <button class="btn" id="clearKey" type="button"><i class="fa-solid fa-trash"></i>Remover</button>
-      </div>
-      <div class="keyinfo" id="keyInfo"></div>
+      <h3><i class="fa-solid fa-key"></i> Chaves das APIs de notícias</h3>
+      <p>Opcional. Cadastre quantas chaves quiser em cada API: quando uma esgota a cota (ou é recusada), a próxima assume automaticamente. Se todas falharem, a busca recorre aos feeds dos veículos e ao Google Notícias. As chaves ficam salvas apenas neste navegador (ou no servidor, via variável de ambiente).</p>
+      <div id="keyList"></div>
     </div>
     <div class="foot"><i class="fa-solid fa-circle-info"></i> As preferências ficam salvas neste navegador. A edição é renovada automaticamente a cada 10 minutos.</div>
   </section>
@@ -191,7 +188,7 @@ footer{margin-top:40px;border-top:3px solid var(--rule);padding-top:8px;font-siz
     <div class="reader-sheet" id="rdBody"></div>
   </div>
 
-  <footer>Notícias reunidas por <a href="https://currentsapi.services" target="_blank" rel="noopener">Currents API</a> e Google Notícias a partir dos veículos selecionados. Os textos pertencem aos seus respectivos autores.</footer>
+  <footer>Notícias reunidas por APIs de notícias (NewsAPI, Currents API, GNews, NewsData.io e The News API), feeds RSS dos próprios veículos e Google Notícias a partir dos veículos selecionados. Os textos pertencem aos seus respectivos autores.</footer>
 </div>
 
 <script>
@@ -205,7 +202,7 @@ footer{margin-top:40px;border-top:3px solid var(--rule);padding-top:8px;font-siz
   ];
 
   const defaults = {
-    apiKey: '',
+    keys: {},
     topics: ['Brasil', 'Economia', 'Tecnologia'],
     outlets: [
       {name:'G1', domain:'g1.globo.com', on:true},
@@ -221,7 +218,10 @@ footer{margin-top:40px;border-top:3px solid var(--rule);padding-top:8px;font-siz
   let nextAt = Date.now() + REFRESH_MS;
   let busy = false;
   let useServer = false;
-  let lastCurErr = '';
+  let providers = [];      /* [{id,name,env}] vindo do servidor */
+  const lastErr = {};      /* id do provedor -> ultimo erro */
+  const skipUntil = {};    /* id do provedor -> pausa (cota) */
+  const lastUse = {};      /* id do provedor -> 'chave X de Y' */
   let edition = 0;
 
   const $ = id => document.getElementById(id);
@@ -229,7 +229,16 @@ footer{margin-top:40px;border-top:3px solid var(--rule);padding-top:8px;font-siz
   function load(){
     try{
       const s = JSON.parse(localStorage.getItem(KEY));
-      if(s && Array.isArray(s.topics) && Array.isArray(s.outlets)){ s.apiKey = s.apiKey || ''; return s; }
+      if(s && Array.isArray(s.topics) && Array.isArray(s.outlets)){
+        s.keys = s.keys || {};
+        if(s.apiKey){ s.keys.currents = s.keys.currents || s.apiKey; }  /* migra a chave antiga */
+        delete s.apiKey; delete s.usage;
+        for(const k of Object.keys(s.keys)){          /* texto -> lista de chaves */
+          if(typeof s.keys[k] === 'string') s.keys[k] = s.keys[k] ? [s.keys[k]] : [];
+          else if(!Array.isArray(s.keys[k])) s.keys[k] = [];
+        }
+        return s;
+      }
     }catch(e){}
     return JSON.parse(JSON.stringify(defaults));
   }
@@ -351,56 +360,44 @@ footer{margin-top:40px;border-top:3px solid var(--rule);padding-top:8px;font-siz
     return 'há '+Math.round(h/24)+' d';
   }
 
-  /* ---------- Currents API ---------- */
-  function today(){ return new Date().toISOString().slice(0,10); }
-  function countUse(){
-    if(!state.usage || state.usage.day !== today()) state.usage = {day:today(), n:0};
-    state.usage.n++; save();
-  }
+  /* ---------- APIs de notícias ---------- */
   function host(u){ try{ return new URL(u).hostname.replace(/^www\./,''); }catch(e){ return ''; } }
-  function parseCurrentsDate(v){
-    const d = new Date(String(v).replace(' ','T').replace(/ ([+-]\d{2})(\d{2})$/,'$1:$2'));
-    return isNaN(d) ? new Date() : d;
+  function sourceName(h, fallback){
+    const o = state.outlets.find(o=>h === o.domain || h.endsWith('.'+o.domain));
+    return o ? o.name : (fallback || h);
   }
-  function sourceName(h){
-    const o = state.outlets.find(o=>h.endsWith(o.domain));
-    return o ? o.name : h;
+  async function loadProviders(){
+    if(!useServer) return;
+    try{
+      const r = await fetch('/api/providers');
+      if(r.ok) providers = (await r.json()).providers || [];
+    }catch(e){}
   }
-  async function fetchCurrents(topic){
-    const url = 'https://api.currentsapi.services/v1/search?keywords=' + encodeURIComponent(topic) +
-      '&language=pt&apiKey=' + encodeURIComponent(state.apiKey);
-    countUse(); updateKeyInfo();
-    const tries = useServer ? [null] : [u=>u];
-    let last;
-    for(const p of tries){
-      try{
-        const r = useServer
-          ? await fetch('/api/currents?keywords=' + encodeURIComponent(topic), {headers:{'X-Api-Key': state.apiKey}})
-          : await fetch(p(url));
-        if(r.status === 429) throw new Error('quota');
-        if(!r.ok){
-          let m = ''; try{ m = (await r.json()).msg || ''; }catch(x){}
-          throw new Error('Currents HTTP '+r.status+(m ? ': '+m : ''));
-        }
-        const j = await r.json();
-        if(j.status !== 'ok') throw new Error(j.msg || 'erro');
-        lastCurErr = '';
-        let items = (j.news||[]).map(n=>({
-          title: (n.title||'').trim(),
-          link: n.url || '#',
-          date: parseCurrentsDate(n.published),
-          source: sourceName(host(n.url||'')),
-          image: (n.image && n.image !== 'None') ? n.image : ''
-        })).filter(a=>a.title);
-        const act = state.outlets.filter(o=>o.on);
-        if(act.length) items = items.filter(a=>act.some(o=>host(a.link).endsWith(o.domain)));
-        const seen = new Set();
-        items = items.filter(a=>{ const k=a.title.toLowerCase(); if(seen.has(k)) return false; seen.add(k); return true; });
-        items.sort((a,b)=>b.date-a.date);
-        return items;
-      }catch(e){ last = e; lastCurErr = e.message === 'quota' ? 'cota diária esgotada' : e.message; if(e.message === 'quota') break; }
+  function keysOf(id){ return Array.isArray(state.keys[id]) ? state.keys[id] : []; }
+  function activeProviders(){
+    return useServer ? providers.filter(p => keysOf(p.id).length || p.env) : [];
+  }
+  async function fetchApi(p, topic){
+    const act = state.outlets.filter(o=>o.on);
+    const url = '/api/news?provider=' + encodeURIComponent(p.id) + '&q=' + encodeURIComponent(topic) +
+      '&domains=' + encodeURIComponent(act.map(o=>o.domain).join(','));
+    const r = await fetch(url, {headers: keysOf(p.id).length ? {'X-Api-Key': keysOf(p.id).join(',')} : {}});
+    let j = {}; try{ j = await r.json(); }catch(x){}
+    if(!r.ok){
+      const e = new Error(j.error || ('HTTP ' + r.status));
+      e.quota = r.status === 429;
+      throw e;
     }
-    throw last;
+    if(j.key) lastUse[p.id] = 'chave ' + j.key + ' de ' + j.keys;
+    let items = (j.items||[]).map(n=>({
+      title: n.title, link: n.link, date: new Date(n.date),
+      source: sourceName(n.domain || host(n.link), n.source), image: n.image || ''
+    }));
+    if(act.length) items = items.filter(a=>act.some(o=>{ const h = host(a.link); return h === o.domain || h.endsWith('.'+o.domain); }));
+    const seen = new Set();
+    items = items.filter(a=>{ const k=a.title.toLowerCase(); if(seen.has(k)) return false; seen.add(k); return true; });
+    items.sort((a,b)=>b.date-a.date);
+    return items;
   }
   async function fetchRss2Json(url){
     const r = await fetch('https://api.rss2json.com/v1/api.json?rss_url=' + encodeURIComponent(url));
@@ -416,30 +413,121 @@ footer{margin-top:40px;border-top:3px solid var(--rule);padding-top:8px;font-siz
     items.sort((a,b)=>b.date-a.date);
     return items;
   }
+  async function fetchFeeds(topic){
+    const doms = state.outlets.filter(o=>o.on).map(o=>o.domain);
+    const r = await fetch('/api/feeds?topic=' + encodeURIComponent(topic) + '&outlets=' + encodeURIComponent(doms.join(',')));
+    if(!r.ok) throw new Error('feeds HTTP '+r.status);
+    const j = await r.json();
+    return (j.items||[]).map(n=>{
+      const o = state.outlets.find(o=>o.domain === n.domain);
+      return {title:n.title, link:n.link, date:new Date(n.date), source:(o ? o.name : n.source), image:n.image||''};
+    });
+  }
+  function mergeItems(a, b){
+    const seen = new Set(), out = [];
+    for(const x of a.concat(b)){
+      const k1 = x.link, k2 = x.title.toLowerCase();
+      if(seen.has(k1) || seen.has(k2)) continue;
+      seen.add(k1); seen.add(k2); out.push(x);
+    }
+    out.sort((x,y)=>y.date-x.date);
+    return out;
+  }
   async function getTopic(t){
-    if(state.apiKey){
+    for(const p of activeProviders()){
+      if((skipUntil[p.id] || 0) > Date.now()) continue;
       try{
-        const it = await fetchCurrents(t);
-        if(it.length) return {items: it, via: 'Currents API'};
-      }catch(e){}
+        const it = await fetchApi(p, t);
+        lastErr[p.id] = '';
+        if(it.length) return {items: it, via: p.name};
+      }catch(e){
+        lastErr[p.id] = e.quota ? 'cota esgotada' : e.message;
+        if(e.quota) skipUntil[p.id] = Date.now() + 30*60*1000;
+      }
+    }
+    let feedItems = [];
+    if(useServer){
+      try{ feedItems = await fetchFeeds(t); }catch(e){}
+      if(feedItems.length >= 5) return {items: feedItems, via: 'feeds dos veículos'};
     }
     const url = buildUrl(t);
     try{
-      return {items: parse(await fetchText(url)), via: 'Google Notícias'};
+      const g = parse(await fetchText(url));
+      return feedItems.length
+        ? {items: mergeItems(feedItems, g), via: 'feeds dos veículos e Google Notícias'}
+        : {items: g, via: 'Google Notícias'};
     }catch(e1){
       try{
-        return {items: await fetchRss2Json(url), via: 'Google Notícias'};
+        const g = await fetchRss2Json(url);
+        return feedItems.length
+          ? {items: mergeItems(feedItems, g), via: 'feeds dos veículos e Google Notícias'}
+          : {items: g, via: 'Google Notícias'};
       }catch(e2){
+        if(feedItems.length) return {items: feedItems, via: 'feeds dos veículos'};
         throw new Error(e1.message + ' | ' + e2.message);
       }
     }
   }
+  function renderKeys(){
+    const box = $('keyList'); box.innerHTML = '';
+    if(!useServer){
+      box.innerHTML = '<div class="keyinfo">As APIs de notícias só funcionam com o servidor ativo (<code>python servidor.py</code>). Sem ele, a busca usa o Google Notícias.</div>';
+      return;
+    }
+    providers.forEach(p=>{
+      const row = document.createElement('div'); row.className = 'addrow keyrow';
+      const lab = document.createElement('label'); lab.textContent = p.name; lab.htmlFor = 'key-' + p.id;
+      const inp = document.createElement('input');
+      inp.id = 'key-' + p.id; inp.type = 'password'; inp.autocomplete = 'off';
+      inp.placeholder = 'Cole uma chave aqui'; inp.setAttribute('aria-label', 'Adicionar chave ' + p.name);
+      const add = document.createElement('button'); add.type = 'button'; add.className = 'btn';
+      add.innerHTML = '<i class="fa-solid fa-plus"></i>Adicionar chave';
+      const chips = document.createElement('div'); chips.className = 'chips'; chips.id = 'keyChips-' + p.id;
+      chips.style.cssText = 'flex:1 1 100%';
+      const st = document.createElement('div'); st.className = 'keyinfo'; st.id = 'keySt-' + p.id;
+      const doAdd = ()=>{
+        const v = inp.value.trim(); if(!v) return;
+        const list = keysOf(p.id);
+        if(!list.includes(v)) state.keys[p.id] = list.concat(v);
+        delete skipUntil[p.id]; lastErr[p.id] = '';
+        inp.value = ''; save(); renderChips(p); updateKeyInfo(); fetchAll();
+      };
+      add.onclick = doAdd;
+      inp.addEventListener('keydown', e=>{ if(e.key === 'Enter') doAdd(); });
+      row.append(lab, inp, add, chips, st);
+      box.appendChild(row);
+      renderChips(p);
+    });
+    updateKeyInfo();
+  }
+  function renderChips(p){
+    const box = $('keyChips-' + p.id); if(!box) return;
+    box.innerHTML = '';
+    keysOf(p.id).forEach((k,i)=>{
+      const c = document.createElement('div'); c.className = 'chip';
+      const s = document.createElement('span'); s.textContent = (i+1) + '. …' + k.slice(-4);
+      const b = document.createElement('button'); b.type = 'button';
+      b.setAttribute('aria-label', 'Remover chave ' + (i+1)); b.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+      b.onclick = ()=>{
+        state.keys[p.id] = keysOf(p.id).filter((_,j)=>j!==i);
+        delete skipUntil[p.id]; lastErr[p.id] = ''; delete lastUse[p.id];
+        save(); renderChips(p); updateKeyInfo(); fetchAll();
+      };
+      c.append(s, b); box.appendChild(c);
+    });
+  }
   function updateKeyInfo(){
-    const n = (state.usage && state.usage.day === today()) ? state.usage.n : 0;
-    $('keyInfo').textContent = state.apiKey
-      ? 'Chave salva. Requisições à Currents API hoje: '+n+' (uma por tópico a cada atualização).'
-      : 'Nenhuma chave salva. A busca usa o Google Notícias.';
-    if(state.apiKey && lastCurErr) $('keyInfo').textContent += ' Último erro: '+lastCurErr+'.';
+    providers.forEach(p=>{
+      const el = $('keySt-' + p.id); if(!el) return;
+      const n = keysOf(p.id).length;
+      const parts = [];
+      if(n) parts.push(n + (n === 1 ? ' chave salva' : ' chaves salvas') + ' neste navegador');
+      if(p.env) parts.push(p.env + (p.env === 1 ? ' chave' : ' chaves') + ' configurada' + (p.env === 1 ? '' : 's') + ' no servidor');
+      let t = parts.length ? parts.join('; ') + '.' : 'Sem chave.';
+      if(lastUse[p.id] && !lastErr[p.id]) t += ' Em uso: ' + lastUse[p.id] + '.';
+      if(lastErr[p.id]) t += ' Último erro: ' + lastErr[p.id] + '.';
+      el.textContent = t;
+    });
   }
 
   /* ---------- Render ---------- */
@@ -461,7 +549,7 @@ footer{margin-top:40px;border-top:3px solid var(--rule);padding-top:8px;font-siz
     if(res.error){
       h += '<div class="errbox"><i class="fa-solid fa-triangle-exclamation"></i> Não foi possível buscar este tópico agora. Uma nova tentativa ocorre na próxima atualização.'+(location.protocol==='file:' ? '<br>O navegador bloqueia buscas feitas por arquivos abertos direto do disco. Rode <b>servidor.py</b> e abra http://localhost:8000.' : '')+'<br><small>Detalhe técnico: '+esc(res.msg||'sem detalhe')+'</small></div>';
     }else if(!res.items.length){
-      h += '<div class="empty"><i class="fa-regular fa-face-frown"></i> Nenhuma matéria encontrada nas últimas 48 horas para os veículos ativos. Ative mais veículos ou ajuste o tópico.</div>';
+      h += '<div class="empty"><i class="fa-regular fa-face-frown"></i> Nenhuma matéria recente encontrada para os veículos ativos. Ative mais veículos ou ajuste o tópico.</div>';
     }else{
       const items = res.items.slice(0,15);
       items.forEach(a=>itemsByLink.set(a.link, a));
@@ -608,12 +696,6 @@ footer{margin-top:40px;border-top:3px solid var(--rule);padding-top:8px;font-siz
   });
   $('rdBack').onclick = closeReader;
   document.addEventListener('keydown', e=>{ if(e.key === 'Escape' && !$('reader').hidden) closeReader(); });
-  $('saveKey').onclick = ()=>{
-    const v = $('keyInput').value.trim();
-    if(!v) return;
-    state.apiKey = v; $('keyInput').value=''; save(); updateKeyInfo(); fetchAll();
-  };
-  $('clearKey').onclick = ()=>{ state.apiKey=''; save(); updateKeyInfo(); fetchAll(); };
   $('addTopic').onclick = addTopic;
   $('addOutlet').onclick = addOutlet;
   $('topicInput').addEventListener('keydown', e=>{ if(e.key==='Enter') addTopic(); });
@@ -626,9 +708,8 @@ footer{margin-top:40px;border-top:3px solid var(--rule);padding-top:8px;font-siz
   if(location.protocol === 'file:') $('fileWarn').hidden = false;
   setDate();
   renderConfig();
-  updateKeyInfo();
   $('paper').innerHTML = skeleton();
-  detectServer().then(fetchAll);
+  detectServer().then(loadProviders).then(()=>{ renderKeys(); fetchAll(); });
 })();
 </script>
 </body>

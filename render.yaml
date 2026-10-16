@@ -5,3 +5,16 @@ services:
     plan: free
     buildCommand: "true"
     startCommand: python servidor.py
+    envVars:
+      # sync: false = o valor NAO fica no repositorio; voce preenche no painel do Render.
+      # Aceita varias chaves separadas por virgula (ex.: chave1,chave2,chave3): ao esgotar uma, usa a proxima.
+      - key: NEWSAPI_KEY
+        sync: false
+      - key: CURRENTS_API_KEY
+        sync: false
+      - key: GNEWS_KEY
+        sync: false
+      - key: NEWSDATA_KEY
+        sync: false
+      - key: THENEWSAPI_KEY
+        sync: false
