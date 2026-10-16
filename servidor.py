@@ -93,13 +93,19 @@ def resolve_google(url):
     direct = decode_b64(gid)
     if direct:
         return direct
-    code, body, ctype, _ = fetch(f"https://news.google.com/rss/articles/{gid}",
-                                 headers={"Cookie": "CONSENT=YES+"})
-    html = decode_bytes(body, ctype)
-    sg = re.search(r'data-n-a-sg="([^"]+)"', html)
-    ts = re.search(r'data-n-a-ts="([^"]+)"', html)
+    sg = ts = None
+    diag = []
+    for page in (f"https://news.google.com/articles/{gid}?hl=pt-BR&gl=BR&ceid=BR:pt-419",
+                 f"https://news.google.com/rss/articles/{gid}?hl=pt-BR&gl=BR&ceid=BR:pt-419"):
+        code, body, ctype, _ = fetch(page, headers={"Cookie": "CONSENT=YES+cb; SOCS=CAI"})
+        html = decode_bytes(body, ctype)
+        sg = re.search(r'data-n-a-sg="([^"]+)"', html)
+        ts = re.search(r'data-n-a-ts="([^"]+)"', html)
+        diag.append(f"HTTP {code}" + ("" if (sg and ts) else ", sem dados"))
+        if sg and ts:
+            break
     if not sg or not ts:
-        raise ValueError("nao foi possivel resolver o link do Google Noticias")
+        raise ValueError("nao foi possivel resolver o link do Google Noticias (" + "; ".join(diag) + ")")
     inner = ('["garturlreq",[["X","X",["X","X"],null,null,1,1,"US:en",null,1,null,null,'
              'null,null,null,0,1],"X","X",1,[1,1,1],1,1,null,0,0,null,0],'
              f'"{gid}",{ts.group(1)},"{sg.group(1)}"]')
@@ -112,7 +118,7 @@ def resolve_google(url):
         parsed = json.loads(body.decode("utf-8", "replace").split("\n\n")[1])[:-2]
         return json.loads(parsed[0][2])[1]
     except Exception:
-        raise ValueError("nao foi possivel resolver o link do Google Noticias")
+        raise ValueError(f"nao foi possivel resolver o link do Google Noticias (batchexecute HTTP {code})")
 
 
 # ---------- Extracao de imagem e texto ----------
