@@ -170,7 +170,7 @@ footer{margin-top:40px;border-top:3px solid var(--rule);padding-top:8px;font-siz
     </div>
     <div class="wide">
       <h3><i class="fa-solid fa-key"></i> Chave da Currents API</h3>
-      <p>Opcional. Com a chave, a busca usa a Currents API primeiro e recorre ao Google Notícias se ela falhar ou a cota acabar. A chave fica salva apenas neste navegador.</p>
+      <p>Opcional. Com a chave, a busca usa a Currents API primeiro e recorre aos feeds dos veículos e ao Google Notícias se ela falhar ou a cota acabar. A chave fica salva apenas neste navegador.</p>
       <div class="addrow keyrow">
         <input id="keyInput" type="password" autocomplete="off" placeholder="Cole sua chave aqui" aria-label="Chave da Currents API">
         <button class="btn" id="saveKey" type="button"><i class="fa-solid fa-floppy-disk"></i>Salvar chave</button>
@@ -191,7 +191,7 @@ footer{margin-top:40px;border-top:3px solid var(--rule);padding-top:8px;font-siz
     <div class="reader-sheet" id="rdBody"></div>
   </div>
 
-  <footer>Notícias reunidas por <a href="https://currentsapi.services" target="_blank" rel="noopener">Currents API</a> e Google Notícias a partir dos veículos selecionados. Os textos pertencem aos seus respectivos autores.</footer>
+  <footer>Notícias reunidas por <a href="https://currentsapi.services" target="_blank" rel="noopener">Currents API</a>, feeds RSS dos próprios veículos e Google Notícias a partir dos veículos selecionados. Os textos pertencem aos seus respectivos autores.</footer>
 </div>
 
 <script>
@@ -416,6 +416,26 @@ footer{margin-top:40px;border-top:3px solid var(--rule);padding-top:8px;font-siz
     items.sort((a,b)=>b.date-a.date);
     return items;
   }
+  async function fetchFeeds(topic){
+    const doms = state.outlets.filter(o=>o.on).map(o=>o.domain);
+    const r = await fetch('/api/feeds?topic=' + encodeURIComponent(topic) + '&outlets=' + encodeURIComponent(doms.join(',')));
+    if(!r.ok) throw new Error('feeds HTTP '+r.status);
+    const j = await r.json();
+    return (j.items||[]).map(n=>{
+      const o = state.outlets.find(o=>o.domain === n.domain);
+      return {title:n.title, link:n.link, date:new Date(n.date), source:(o ? o.name : n.source), image:n.image||''};
+    });
+  }
+  function mergeItems(a, b){
+    const seen = new Set(), out = [];
+    for(const x of a.concat(b)){
+      const k1 = x.link, k2 = x.title.toLowerCase();
+      if(seen.has(k1) || seen.has(k2)) continue;
+      seen.add(k1); seen.add(k2); out.push(x);
+    }
+    out.sort((x,y)=>y.date-x.date);
+    return out;
+  }
   async function getTopic(t){
     if(state.apiKey){
       try{
@@ -423,13 +443,25 @@ footer{margin-top:40px;border-top:3px solid var(--rule);padding-top:8px;font-siz
         if(it.length) return {items: it, via: 'Currents API'};
       }catch(e){}
     }
+    let feedItems = [];
+    if(useServer){
+      try{ feedItems = await fetchFeeds(t); }catch(e){}
+      if(feedItems.length >= 5) return {items: feedItems, via: 'feeds dos veículos'};
+    }
     const url = buildUrl(t);
     try{
-      return {items: parse(await fetchText(url)), via: 'Google Notícias'};
+      const g = parse(await fetchText(url));
+      return feedItems.length
+        ? {items: mergeItems(feedItems, g), via: 'feeds dos veículos e Google Notícias'}
+        : {items: g, via: 'Google Notícias'};
     }catch(e1){
       try{
-        return {items: await fetchRss2Json(url), via: 'Google Notícias'};
+        const g = await fetchRss2Json(url);
+        return feedItems.length
+          ? {items: mergeItems(feedItems, g), via: 'feeds dos veículos e Google Notícias'}
+          : {items: g, via: 'Google Notícias'};
       }catch(e2){
+        if(feedItems.length) return {items: feedItems, via: 'feeds dos veículos'};
         throw new Error(e1.message + ' | ' + e2.message);
       }
     }
@@ -438,7 +470,7 @@ footer{margin-top:40px;border-top:3px solid var(--rule);padding-top:8px;font-siz
     const n = (state.usage && state.usage.day === today()) ? state.usage.n : 0;
     $('keyInfo').textContent = state.apiKey
       ? 'Chave salva. Requisições à Currents API hoje: '+n+' (uma por tópico a cada atualização).'
-      : 'Nenhuma chave salva. A busca usa o Google Notícias.';
+      : 'Nenhuma chave salva. A busca usa os feeds dos veículos e o Google Notícias.';
     if(state.apiKey && lastCurErr) $('keyInfo').textContent += ' Último erro: '+lastCurErr+'.';
   }
 
@@ -461,7 +493,7 @@ footer{margin-top:40px;border-top:3px solid var(--rule);padding-top:8px;font-siz
     if(res.error){
       h += '<div class="errbox"><i class="fa-solid fa-triangle-exclamation"></i> Não foi possível buscar este tópico agora. Uma nova tentativa ocorre na próxima atualização.'+(location.protocol==='file:' ? '<br>O navegador bloqueia buscas feitas por arquivos abertos direto do disco. Rode <b>servidor.py</b> e abra http://localhost:8000.' : '')+'<br><small>Detalhe técnico: '+esc(res.msg||'sem detalhe')+'</small></div>';
     }else if(!res.items.length){
-      h += '<div class="empty"><i class="fa-regular fa-face-frown"></i> Nenhuma matéria encontrada nas últimas 48 horas para os veículos ativos. Ative mais veículos ou ajuste o tópico.</div>';
+      h += '<div class="empty"><i class="fa-regular fa-face-frown"></i> Nenhuma matéria recente encontrada para os veículos ativos. Ative mais veículos ou ajuste o tópico.</div>';
     }else{
       const items = res.items.slice(0,15);
       items.forEach(a=>itemsByLink.set(a.link, a));
