@@ -8,20 +8,12 @@ Uso:  python servidor.py      (depois abra http://localhost:8000)
 Opcional: defina CURRENTS_API_KEY em vez de colar a chave na pagina.
 """
 import base64
-import html as htmlmod
 import ipaddress
 import json
 import os
 import re
 import socket
-import threading
 import time
-import unicodedata
-import xml.etree.ElementTree as ET
-from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
-from email.utils import parsedate_to_datetime
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -101,19 +93,13 @@ def resolve_google(url):
     direct = decode_b64(gid)
     if direct:
         return direct
-    sg = ts = None
-    diag = []
-    for page in (f"https://news.google.com/articles/{gid}?hl=pt-BR&gl=BR&ceid=BR:pt-419",
-                 f"https://news.google.com/rss/articles/{gid}?hl=pt-BR&gl=BR&ceid=BR:pt-419"):
-        code, body, ctype, _ = fetch(page, headers={"Cookie": "CONSENT=YES+cb; SOCS=CAI"})
-        html = decode_bytes(body, ctype)
-        sg = re.search(r'data-n-a-sg="([^"]+)"', html)
-        ts = re.search(r'data-n-a-ts="([^"]+)"', html)
-        diag.append(f"HTTP {code}" + ("" if (sg and ts) else ", sem dados"))
-        if sg and ts:
-            break
+    code, body, ctype, _ = fetch(f"https://news.google.com/rss/articles/{gid}",
+                                 headers={"Cookie": "CONSENT=YES+"})
+    html = decode_bytes(body, ctype)
+    sg = re.search(r'data-n-a-sg="([^"]+)"', html)
+    ts = re.search(r'data-n-a-ts="([^"]+)"', html)
     if not sg or not ts:
-        raise ValueError("nao foi possivel resolver o link do Google Noticias (" + "; ".join(diag) + ")")
+        raise ValueError("nao foi possivel resolver o link do Google Noticias")
     inner = ('["garturlreq",[["X","X",["X","X"],null,null,1,1,"US:en",null,1,null,null,'
              'null,null,null,0,1],"X","X",1,[1,1,1],1,1,null,0,0,null,0],'
              f'"{gid}",{ts.group(1)},"{sg.group(1)}"]')
@@ -126,7 +112,7 @@ def resolve_google(url):
         parsed = json.loads(body.decode("utf-8", "replace").split("\n\n")[1])[:-2]
         return json.loads(parsed[0][2])[1]
     except Exception:
-        raise ValueError(f"nao foi possivel resolver o link do Google Noticias (batchexecute HTTP {code})")
+        raise ValueError("nao foi possivel resolver o link do Google Noticias")
 
 
 # ---------- Extracao de imagem e texto ----------
@@ -231,277 +217,6 @@ def get_article(url):
     return data
 
 
-# ---------- Feeds RSS dos portais (sem passar pelo Google) ----------
-# dominio -> (nome, [feed geral], {editoria: feed da editoria})
-# Se algum feed sair do ar, o servidor tenta descobrir outro na pagina inicial do portal.
-FEEDS = {
-    "g1.globo.com": ("G1", ["https://g1.globo.com/rss/g1/"], {
-        "economia": "https://g1.globo.com/rss/g1/economia/",
-        "tecnologia": "https://g1.globo.com/rss/g1/tecnologia/",
-        "mundo": "https://g1.globo.com/rss/g1/mundo/",
-        "politica": "https://g1.globo.com/rss/g1/politica/",
-        "ciencia": "https://g1.globo.com/rss/g1/ciencia-e-saude/",
-        "saude": "https://g1.globo.com/rss/g1/ciencia-e-saude/",
-    }),
-    "folha.uol.com.br": ("Folha de S.Paulo", ["https://feeds.folha.uol.com.br/emcimadahora/rss091.xml"], {
-        "economia": "https://feeds.folha.uol.com.br/mercado/rss091.xml",
-        "tecnologia": "https://feeds.folha.uol.com.br/tec/rss091.xml",
-        "mundo": "https://feeds.folha.uol.com.br/mundo/rss091.xml",
-        "politica": "https://feeds.folha.uol.com.br/poder/rss091.xml",
-        "esporte": "https://feeds.folha.uol.com.br/esporte/rss091.xml",
-        "ciencia": "https://feeds.folha.uol.com.br/ciencia/rss091.xml",
-        "saude": "https://feeds.folha.uol.com.br/equilibrioesaude/rss091.xml",
-        "cultura": "https://feeds.folha.uol.com.br/ilustrada/rss091.xml",
-    }),
-    "estadao.com.br": ("O Estado de S. Paulo",
-                       ["https://www.estadao.com.br/arc/outboundfeeds/rss/?outputType=xml"], {}),
-    "cnnbrasil.com.br": ("CNN Brasil", ["https://www.cnnbrasil.com.br/feed/"], {
-        "economia": "https://www.cnnbrasil.com.br/economia/feed/",
-        "tecnologia": "https://www.cnnbrasil.com.br/tecnologia/feed/",
-        "mundo": "https://www.cnnbrasil.com.br/internacional/feed/",
-        "politica": "https://www.cnnbrasil.com.br/politica/feed/",
-        "esporte": "https://www.cnnbrasil.com.br/esportes/feed/",
-        "saude": "https://www.cnnbrasil.com.br/saude/feed/",
-    }),
-    "bbc.com": ("BBC News Brasil", ["https://feeds.bbci.co.uk/portuguese/rss.xml"], {}),
-    "uol.com.br": ("UOL", ["https://rss.uol.com.br/feed/noticias.xml"], {
-        "economia": "https://rss.uol.com.br/feed/economia.xml",
-        "tecnologia": "https://rss.uol.com.br/feed/tecnologia.xml",
-    }),
-    "agenciabrasil.ebc.com.br": ("Agencia Brasil",
-                                 ["https://agenciabrasil.ebc.com.br/rss/ultimasnoticias/feed.xml"], {}),
-    "poder360.com.br": ("Poder360", ["https://www.poder360.com.br/feed/"], {}),
-    "infomoney.com.br": ("InfoMoney", ["https://www.infomoney.com.br/feed/"], {}),
-    "exame.com": ("Exame", ["https://exame.com/feed/"], {}),
-    "tecnoblog.net": ("Tecnoblog", ["https://tecnoblog.net/feed/"], {}),
-    "metropoles.com": ("Metropoles", ["https://www.metropoles.com/feed"], {}),
-}
-DEFAULT_DOMAINS = ["g1.globo.com", "folha.uol.com.br", "estadao.com.br",
-                   "cnnbrasil.com.br", "bbc.com", "noticias.uol.com.br"]
-# trecho do topico -> editoria
-SECTION_STEMS = {
-    "economia": "economia", "mercado": "economia", "negocio": "economia", "financ": "economia",
-    "tecnolog": "tecnologia", "tech": "tecnologia",
-    "mundo": "mundo", "internacional": "mundo",
-    "politic": "politica", "esporte": "esporte", "futebol": "esporte",
-    "cienc": "ciencia", "saude": "saude", "cultura": "cultura", "entretenimento": "cultura",
-}
-GENERIC = {"brasil", "geral", "noticias", "ultimas noticias", "principais", "destaques",
-           "manchetes", "hoje", "ultimas", "em alta", "ultimas noticias do brasil"}
-STOP = {"das", "dos", "para", "com", "que", "uma", "por", "sobre", "the", "and"}
-FEED_TTL = 300
-WINDOW = 72 * 3600
-_feed_cache, _disc_cache = {}, {}
-_locks = defaultdict(threading.Lock)
-
-
-def norm(s):
-    s = unicodedata.normalize("NFD", s or "").lower()
-    return "".join(c for c in s if unicodedata.category(c) != "Mn")
-
-
-def lookup(dom):
-    best = None
-    for k in FEEDS:
-        if dom == k or dom.endswith("." + k):
-            if best is None or len(k) > len(best):
-                best = k
-    return FEEDS[best] if best else None
-
-
-def _local(tag):
-    return tag.rsplit("}", 1)[-1].lower() if isinstance(tag, str) else ""
-
-
-def _text(el):
-    return "".join(el.itertext()).strip() if el is not None else ""
-
-
-def _plain(html_text):
-    return " ".join(re.sub(r"<[^>]+>", " ", htmlmod.unescape(html_text or "")).split())
-
-
-def _date(v):
-    v = (v or "").strip()
-    if not v:
-        return None
-    try:
-        d = parsedate_to_datetime(v)
-    except Exception:
-        try:
-            d = datetime.fromisoformat(v.replace("Z", "+00:00"))
-        except Exception:
-            return None
-    if d.tzinfo is None:
-        d = d.replace(tzinfo=timezone.utc)
-    return d.timestamp()
-
-
-def parse_feed(body, base, name, dom):
-    body = body.lstrip()
-    try:
-        root = ET.fromstring(body)
-    except ET.ParseError:
-        txt = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", decode_bytes(body))
-        txt = re.sub(r"^<\?xml[^>]*\?>", "", txt.lstrip())
-        root = ET.fromstring(txt)
-    now = time.time()
-    out = []
-    for e in root.iter():
-        if _local(e.tag) not in ("item", "entry"):
-            continue
-        title = link = desc = ""
-        ts = None
-        cats, imgs, htmls = [], [], []
-        for c in e:
-            t = _local(c.tag)
-            if t == "title":
-                title = _plain(_text(c))
-            elif t == "link":
-                if c.get("href"):
-                    if c.get("rel") in (None, "alternate"):
-                        link = link or c.get("href")
-                else:
-                    link = _text(c) or link
-            elif t in ("origlink",) and _text(c):
-                link = _text(c)
-            elif t == "guid" and not link and _text(c).startswith("http"):
-                link = _text(c)
-            elif t in ("pubdate", "published", "date", "updated"):
-                ts = ts or _date(_text(c))
-            elif t in ("description", "summary", "subtitle"):
-                htmls.append(_text(c))
-                desc = desc or _plain(_text(c))
-            elif t in ("encoded", "content") and not c.get("url"):
-                htmls.append(_text(c))
-            elif t == "category":
-                cats.append(_text(c) or c.get("term") or "")
-        for el in e.iter():
-            t = _local(el.tag)
-            if t in ("content", "thumbnail") and el.get("url"):
-                kind = (el.get("type") or el.get("medium") or "image").lower()
-                if "image" in kind:
-                    imgs.append(el.get("url"))
-            elif t == "enclosure" and (el.get("type") or "").startswith("image") and el.get("url"):
-                imgs.append(el.get("url"))
-        if not imgs:
-            for h in htmls:
-                m = re.search(r"<img[^>]+src=[\"']([^\"']+)", h, re.I)
-                if m:
-                    imgs.append(m.group(1))
-                    break
-        link = urllib.parse.urljoin(base, link) if link else ""
-        if not title or not link.startswith("http"):
-            continue
-        img = urllib.parse.urljoin(base, htmlmod.unescape(imgs[0])) if imgs else ""
-        if not img.startswith("http"):
-            img = ""
-        ts = ts or now
-        if ts < now - WINDOW:
-            continue
-        out.append({"title": title, "link": link, "ts": ts, "image": img, "source": name,
-                    "domain": dom, "hay": norm(title + " " + desc + " " + " ".join(cats))})
-    return out
-
-
-def get_feed(url, name, dom):
-    with _locks[url]:
-        hit = _feed_cache.get(url)
-        if hit and time.time() - hit[0] < FEED_TTL:
-            return hit[1]
-        code, body, ctype, final = fetch(url, headers={
-            "Accept": "application/rss+xml, application/atom+xml, application/xml, text/xml, */*"},
-            timeout=12, limit=3_000_000)
-        if code >= 400:
-            raise ValueError(f"HTTP {code}")
-        items = parse_feed(body, final, name, dom)
-        _feed_cache[url] = (time.time(), items)
-        return items
-
-
-def discover(dom):
-    hit = _disc_cache.get(dom)
-    if hit and time.time() - hit[0] < 86400:
-        return hit[1]
-    urls = []
-    base = f"https://{dom}/"
-    if public_http(base):
-        try:
-            code, body, ctype, final = fetch(base, headers={"Accept": "text/html"}, timeout=12, limit=400_000)
-            page = decode_bytes(body, ctype)
-            for m in re.finditer(r"<link\b[^>]*>", page, re.I):
-                tag = m.group(0)
-                if re.search(r"type=[\"']application/(rss|atom)\+xml", tag, re.I):
-                    h = re.search(r"href=[\"']([^\"']+)", tag, re.I)
-                    if h:
-                        urls.append(urllib.parse.urljoin(final, htmlmod.unescape(h.group(1))))
-        except Exception:
-            pass
-        urls = urls[:2] + [base + "feed/", base + "rss", base + "feed", base + "rss.xml"]
-        urls = [u for i, u in enumerate(urls) if u not in urls[:i] and public_http(u)]
-    _disc_cache[dom] = (time.time(), urls)
-    return urls
-
-
-def _run_job(job):
-    name, dom, urls, filt, tokens = job
-    st = {"name": name, "domain": dom, "ok": False, "count": 0, "error": ""}
-    items, errs = [], []
-
-    def attempt(cands):
-        for u in cands:
-            try:
-                items.extend(get_feed(u, name, dom))
-                return True
-            except Exception as ex:  # noqa: BLE001
-                errs.append(f"{type(ex).__name__}: {ex}"[:140])
-        return False
-
-    if not attempt(urls):
-        attempt([u for u in discover(dom) if u not in urls])
-    if items:
-        st["ok"] = True
-    else:
-        st["error"] = errs[-1] if errs else "nenhum feed encontrado"
-    if filt:
-        items = [i for i in items if all(t in i["hay"] for t in tokens)]
-    st["count"] = len(items)
-    return items, st
-
-
-def collect(topic, domains):
-    tn = norm(topic).strip()
-    tokens = [t for t in re.findall(r"[a-z0-9]+", tn) if len(t) >= 3 and t not in STOP]
-    generic = tn in GENERIC or not tokens
-    section = next((v for k, v in SECTION_STEMS.items() if k in tn), None)
-    jobs = []
-    for dom in domains:
-        info = lookup(dom)
-        name, general, secs = info if info else (dom, [], {})
-        if generic:
-            jobs.append((name, dom, general, False, tokens))
-        elif section and section in secs:
-            jobs.append((name, dom, [secs[section]], False, tokens))
-        else:
-            jobs.append((name, dom, general, True, tokens))
-    with ThreadPoolExecutor(max_workers=8) as pool:
-        results = list(pool.map(_run_job, jobs))
-    seen, merged, sources = set(), [], []
-    for items, st in results:
-        sources.append(st)
-        for i in items:
-            k = (i["link"], i["title"].lower())
-            if k[0] in seen or k[1] in seen:
-                continue
-            seen.add(k[0]); seen.add(k[1])
-            merged.append(i)
-    merged.sort(key=lambda i: i["ts"], reverse=True)
-    out = [{"title": i["title"], "link": i["link"], "image": i["image"], "source": i["source"],
-            "domain": i["domain"],
-            "date": datetime.fromtimestamp(i["ts"], timezone.utc).isoformat()} for i in merged[:40]]
-    return {"items": out, "sources": sources}
-
-
 class Handler(BaseHTTPRequestHandler):
     def send(self, code, body, ctype):
         self.send_response(code)
@@ -538,12 +253,6 @@ class Handler(BaseHTTPRequestHandler):
                 url = "https://api.currentsapi.services/v1/search?" + urllib.parse.urlencode(params)
                 code, body, ctype, _ = fetch(url)
                 self.send(code, body, ctype)
-            elif u.path == "/api/feeds":
-                topic = (q.get("topic") or [""])[0]
-                raw = (q.get("outlets") or [""])[0]
-                doms = [d for d in (x.strip().lower() for x in raw.split(","))
-                        if re.fullmatch(r"[a-z0-9.-]{3,100}", d)][:12] or DEFAULT_DOMAINS
-                self.send_json(200, collect(topic, doms))
             elif u.path == "/api/article":
                 target = (q.get("url") or [""])[0]
                 if not target.startswith("http"):
